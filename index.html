@@ -13,6 +13,7 @@
             height: 100%;
             background: rgba(255, 255, 255, 0.2);
             backdrop-filter: blur(20px);
+            font-family: Arial, sans-serif;
         }
         canvas {
             display: block;
@@ -20,14 +21,43 @@
             height: 100vh;
             border-radius: 20px;
         }
+        #topbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 50px;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            color: white;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            font-size: 18px;
+        }
+        #controls {
+            position: fixed;
+            top: 60px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 10px;
+            border-radius: 10px;
+        }
     </style>
 </head>
 <body>
-    <div id="overlay">🎨 3D Sculpting App</div>
+    <div id="topbar">🎨 3D Sculpting App</div>
+    <div id="controls">
+        <button onclick="addBone()">Add Bone</button>
+        <button onclick="importModel()">Import Model</button>
+        <input type="file" id="textureInput" accept="image/*" onchange="applyTexture(event)">
+        <button onclick="animateModel()">Animate</button>
+    </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three/examples/js/controls/OrbitControls.js"></script>
     <script>
-        let scene, camera, renderer, controls, mesh;
+        let scene, camera, renderer, controls, mesh, skeletonHelper, mixer;
         
         function init() {
             scene = new THREE.Scene();
@@ -42,14 +72,25 @@
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
             controls.dampingFactor = 0.05;
-            controls.screenSpacePanning = false;
-            controls.minDistance = 1;
-            controls.maxDistance = 10;
             
             const geometry = new THREE.SphereGeometry(1, 32, 32);
-            const material = new THREE.MeshStandardMaterial({ color: 0x0077ff });
-            mesh = new THREE.Mesh(geometry, material);
+            const material = new THREE.MeshStandardMaterial({ color: 0x0077ff, skinning: true });
+            mesh = new THREE.SkinnedMesh(geometry, material);
             scene.add(mesh);
+            
+            const bone1 = new THREE.Bone();
+            const bone2 = new THREE.Bone();
+            bone1.add(bone2);
+            bone2.position.y = 1;
+            
+            const skeleton = new THREE.Skeleton([bone1, bone2]);
+            mesh.add(bone1);
+            mesh.bind(skeleton);
+            
+            skeletonHelper = new THREE.SkeletonHelper(mesh);
+            scene.add(skeletonHelper);
+            
+            mixer = new THREE.AnimationMixer(mesh);
             
             const light = new THREE.DirectionalLight(0xffffff, 1);
             light.position.set(5, 5, 5).normalize();
@@ -57,6 +98,41 @@
             
             window.addEventListener("resize", onWindowResize);
             animate();
+        }
+        
+        function addBone() {
+            const newBone = new THREE.Bone();
+            newBone.position.y = Math.random();
+            mesh.skeleton.bones[mesh.skeleton.bones.length - 1].add(newBone);
+            mesh.skeleton.bones.push(newBone);
+            skeletonHelper.update();
+        }
+        
+        function importModel() {
+            alert("Model importing feature coming soon!");
+        }
+        
+        function applyTexture(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const texture = new THREE.TextureLoader().load(e.target.result);
+                mesh.material.map = texture;
+                mesh.material.needsUpdate = true;
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        function animateModel() {
+            const clip = new THREE.AnimationClip("wave", 2, [
+                new THREE.VectorKeyframeTrack(".bones[1].position", [0, 1], [0, 1, 0, -1]),
+            ]);
+            
+            const action = mixer.clipAction(clip);
+            action.loop = THREE.LoopRepeat;
+            action.play();
         }
         
         function onWindowResize() {
@@ -67,7 +143,9 @@
         
         function animate() {
             requestAnimationFrame(animate);
+            mixer.update(0.01);
             controls.update();
+            skeletonHelper.update();
             renderer.render(scene, camera);
         }
         
